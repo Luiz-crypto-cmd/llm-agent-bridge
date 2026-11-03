@@ -521,6 +521,11 @@ Run them in that order before pushing. CI enforces the same checks.
 - Run the full check sequence before opening a pull request.
 - The syntax `except X, Y` is brought back in python 3.14 final version (not in 3.14 alpha). Keep in mind before opening PRs.
 
+## Security
+
+See [SECURITY.md](SECURITY.md) for supported versions, the vulnerability
+disclosure policy, and how to report security issues privately.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
