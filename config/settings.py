@@ -104,6 +104,14 @@ def _removed_env_var_message(model_config: Mapping[str, Any]) -> str | None:
     return None
 
 
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Return True when the bind host only exposes the proxy to the local machine."""
+    return host.strip().lower() in _LOOPBACK_HOSTS
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -325,10 +333,11 @@ class Settings(BaseSettings):
     )
 
     # ==================== Server ====================
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8082
     # Optional server API key to protect endpoints (Anthropic-style)
-    # Set via env `ANTHROPIC_AUTH_TOKEN`. When empty, no auth is required.
+    # Set via env `ANTHROPIC_AUTH_TOKEN`. When empty and the server binds to a
+    # non-loopback interface, startup fails (see require_auth_for_non_loopback_bind).
     anthropic_auth_token: str = Field(
         default="", validation_alias="ANTHROPIC_AUTH_TOKEN"
     )
@@ -340,6 +349,24 @@ class Settings(BaseSettings):
         if message := _removed_env_var_message(cls.model_config):
             raise ValueError(message)
         return data
+
+    @model_validator(mode="after")
+    def require_auth_for_non_loopback_bind(self) -> "Settings":
+        """Fail closed when the proxy would be exposed without authentication.
+
+        Binding to a non-loopback address with an empty ``ANTHROPIC_AUTH_TOKEN``
+        turns the server into an unauthenticated relay of the configured provider
+        API keys (CWE-306). Require an explicit token whenever the server is
+        reachable beyond localhost.
+        """
+        if not _is_loopback_host(self.host) and not self.anthropic_auth_token:
+            raise ValueError(
+                "ANTHROPIC_AUTH_TOKEN must be set when the proxy binds to a "
+                f"non-loopback address (HOST={self.host!r}). Set HOST=127.0.0.1 "
+                "for local-only use, or configure ANTHROPIC_AUTH_TOKEN to expose "
+                "the proxy beyond localhost."
+            )
+        return self
 
     # Handle empty strings for optional string fields
     @field_validator(
